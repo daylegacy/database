@@ -1,0 +1,10 @@
+a 1 101
+b 10 106
+f 3 201
+a 5 256
+gasfjdsgjk 12 120
+jhdsfhjsd 0 173
+Student 1234567 208
+Student 7654321 209
+Student 1234567 209
+Student 7654321 208

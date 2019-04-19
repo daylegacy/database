@@ -17,6 +17,8 @@ enum op_type {//operation type
 	OP_NONE, AND, OR
 };
 
+
+
 class command : public record {
 public:
 	cmd_type type = CMD_NONE;
@@ -35,86 +37,110 @@ public:
 		case CMD_NONE:
 			break;
 		case QUIT:
-			printf("quit;\n");
+			printE("quit;\n");
 			break;
 		case STOP:
-			printf("stop;\n");
+			printE("stop;\n");
 			break;
 		case SELECT:
-			printf("select *");
+			printE("select *");
 			if (c_name + c_phone + c_group) {
-				printf(" where ");
+				printE(" where ");
 				int check = 0;
 				if (c_name) {
-					printf("name ");
+					printE("name ");
 					print_cond(c_name);
-					printf("%s", get_name());
+					printE("%s", get_name());
 					if (!check && operation) {
-						printf(" "); print_op(operation); printf(" "); check = 1;
+						printE(" "); print_op(operation); printE(" "); check = 1;
 					}
 				}
 
 				if (c_phone) {
-					printf("phone ");
+					printE("phone ");
 					print_cond(c_phone);
-					printf("%lld", get_phone());
+					printE("%lld", get_phone());
 					if (!check && operation) {
-						printf(" "); print_op(operation); printf(" "); check = 1;
+						printE(" "); print_op(operation); printE(" "); check = 1;
 					}
 				}
 				if (c_group) {
-					printf("group ");
+					printE("group ");
 					print_cond(c_group);
-					printf("%d", get_group());
+					printE("%d", get_group());
 					if (!check && operation) {
-						printf(" "); print_op(operation); printf(" "); check = 1;
+						printE(" "); print_op(operation); printE(" "); check = 1;
 					}
 				}
 
 			}
 			//printf(";\n");
-			printf(";");
+			printE(";");
 			break;
 		case INSERT:
 			//printf("insert (%s, %lld, %d);\n", get_name(), get_phone(), get_group());
-			printf("insert (%s, %lld, %d);", get_name(), get_phone(), get_group());
+			printE("insert (%s, %lld, %d);", get_name(), get_phone(), get_group());
 			break;
 		case DELETE:
-			printf("delete");
+			printE("delete");
 			if (c_name + c_phone + c_group) {
-				printf(" where ");
+				printE(" where ");
 				int check = 0;
 				if (c_name) {
-					printf("name ");
+					printE("name ");
 					print_cond(c_name);
-					printf("%s", get_name());
+					printE("%s", get_name());
 					if (!check && operation) {
-						printf(" "); print_op(operation); printf(" "); check = 1;
+						printE(" "); print_op(operation); printE(" "); check = 1;
 					}
 				}
 				if (c_phone) {
-					printf("phone ");
+					printE("phone ");
 					print_cond(c_phone);
-					printf("%lld", get_phone());
+					printE("%lld", get_phone());
 					if (!check && operation) {
-						printf(" "); print_op(operation); printf(" "); check = 1;
+						printE(" "); print_op(operation); printE(" "); check = 1;
 					}
 				}
 				if (c_group) {
-					printf("group ");
+					printE("group ");
 					print_cond(c_group);
-					printf("%d", get_group());
+					printE("%d", get_group());
 					if (!check && operation) {
-						printf(" "); print_op(operation); printf(" "); check = 1;
+						printE(" "); print_op(operation); printE(" "); check = 1;
 					}
 				}
 			}
 			//printf(";\n");
-			printf(";");
+			printE(";");
+			break;
+		default:
+		printE("\n");
+			break;
+		}
+	}
+
+	void reverse() {
+		switch (c_name)
+		{
+		case EQ: c_name = NE;
+			break;
+		case NE: c_name = EQ;
+			break;
+		case LT: c_name = GE;
+			break;
+		case GT: c_name = LE;
+			break;
+		case LE: c_name = GT;
+			break;
+		case GE: c_name = LT;
+			break;
+		case LIKE:
 			break;
 		default:
 			break;
 		}
+		operation = AND;
 	}
 	cmd_type get_type() const { return type; }
 	op_type get_op() const { return operation; }
@@ -125,19 +151,19 @@ public:
 		case COND_NONE:
 
 			break;
-		case EQ:	printf("= ");
+		case EQ:	printE("= ");
 			break;
-		case NE:	printf("<> ");
+		case NE:	printE("<> ");
 			break;
-		case LT:	printf("< ");
+		case LT:	printE("< ");
 			break;
-		case GT:	printf("> ");
+		case GT:	printE("> ");
 			break;
-		case LE:	printf("<= ");
+		case LE:	printE("<= ");
 			break;
-		case GE:	printf(">= ");
+		case GE:	printE(">= ");
 			break;
-		case LIKE:	printf("like ");
+		case LIKE:	printE("like ");
 			break;
 		default:
 			break;
@@ -149,9 +175,9 @@ public:
 		{
 		case OP_NONE:
 			break;
-		case AND:	printf("and");
+		case AND:	printE("and");
 			break;
-		case OR:	printf("or");
+		case OR:	printE("or");
 			break;
 		default:
 			break;

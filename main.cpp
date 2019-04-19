@@ -1,13 +1,12 @@
 #include "helper.h"
 #include "database.h"
-#include "list.h"
 
 int main(int argc, const char **argv) {
 	Database<record> db;
+	db.init_groups();
 	if (argc >= 2) {
-		int start = clock();
 		db.init_from_file(argv[1]);
-		printf("Elapsed: %.4lf\n", (double(clock()) - start) / CLOCKS_PER_SEC);
+		//printf("Elapsed: %.4lf\n", (double(clock()) - start) / CLOCKS_PER_SEC);
 	}
 	else {
 		//printf("usage: ./f a.txt\n");

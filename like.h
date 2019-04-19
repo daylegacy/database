@@ -109,8 +109,8 @@ bool like(const char * word, const char * lexema)
 	char mask_lexema[LEN];
 	strcpy(mask_lexema, lexema);
 
-	int mask_size = strlen(mask_lexema);
-	int word_size = strlen(word);
+	std::size_t mask_size = strlen(mask_lexema);
+	std::size_t word_size = strlen(word);
 	assert(word_size > 0);
 	char right_ended_mask[LEN];//for searching from right
 	strcpy(right_ended_mask, mask_lexema);

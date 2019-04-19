@@ -4,21 +4,26 @@
 #include "avl_tree.h"
 #include "list.h"
 #include "like.h"
+#include "record.h"
 
-#include <sys/time.h>
+//#include <sys/time.h>
 
+#define N_GROUPS 498
 template<class T>
 class db_avl;
 
+template < class T >
+class Database;
+
 template<class T>
-class db_list : public list<T>{
+class db_list : public list<T> {
 public:
 	int select_with_cmd(const command & cmd) {
 		int i = 0;
 		list_node<T> *node = this->gethead();
 		while (node) {
 			if (satisfy(*node, cmd)) {
-				//node->print();
+				node->print();
 				i++;
 			}
 			node = node->next;
@@ -26,34 +31,76 @@ public:
 		return i;
 	}
 
-	int delete_with_cmd(const command & cmd, avl_tree<list_node<T>> * search_tree) {
-		int i = 0;
-		list_node<T> *node = this->gethead();
-		list_node<T> *tmp;
-		while (node) {
-			tmp = node->next;
-			if (satisfy(*node, cmd)) {
-				node->print(); printf("\n ");
-				int size = search_tree->avl_size;
-				if (size < 10) {
-					printf("d = %d\n ", size);
-					search_tree->print();
-				}
-				
-				if (search_tree) {
-					search_tree->avl_delete(node);
-				}
-				this->delete_list_node(node);
-				
-				i++;
+	void delete_everywhere(avl_node<list_node<T>> * iterator,
+		db_avl<list_node<T>> * tree_1, db_avl<list_node<T>> * tree_2) {
+		if (!iterator)return;
+		delete_everywhere(iterator->link[0], tree_1, tree_2);
+		delete_everywhere(iterator->link[1], tree_1, tree_2);
+
+		tree_1->avl_delete(iterator->pdata, &record::cmp);
+		tree_2->avl_delete(iterator->pdata, &record::cmp_sec);
+		this->delete_list_node(iterator->pdata);
+		delete iterator;
+	}
+
+	int delete_with_cmd(command & cmd, db_avl<list_node<T>> * search_tree,
+		db_avl<list_node<T>> * secondary_tree, Database<T> *& groups) {
+		if (cmd.c_group == EQ) {
+			if (cmd.operation == OR) {
+				groups[cmd.get_group() - 101].search_tree.delete_tree();
+				delete_everywhere(groups[cmd.get_group() - 101].secondary_tree.r_root(), search_tree, secondary_tree);
+				groups[cmd.get_group() - 101].secondary_tree.reset_tree();
+				cmd.c_group = NE;
+				cmd.operation = AND;
 			}
-			node = tmp;
+			if (cmd.operation == OP_NONE) {
+				groups[cmd.get_group() - 101].search_tree.delete_tree();
+				delete_everywhere(groups[cmd.get_group() - 101].secondary_tree.r_root(), search_tree, secondary_tree);
+				groups[cmd.get_group() - 101].secondary_tree.reset_tree();
+				return 0;
+			}
 		}
-		if (search_tree) {
-			search_tree->print();
-			search_tree->is_it_avl();
+
+
+
+		if (cmd.c_name == EQ && cmd.operation != OR) {
+			list_node<T>* node_to_delete;
+			while ((node_to_delete = search_tree->find_cmd(&cmd, &record::cmp_name))) {
+				search_tree->avl_delete(node_to_delete, &record::cmp);
+				secondary_tree->avl_delete(node_to_delete, &record::cmp_sec);
+				groups[node_to_delete->get_group() - 101].search_tree.avl_delete(node_to_delete, &record::cmp);
+				groups[node_to_delete->get_group() - 101].secondary_tree.avl_delete(node_to_delete, &record::cmp_sec);
+				this->delete_list_node(node_to_delete);
+
+			}
 		}
-		return i;
+		else if (cmd.c_phone == EQ && cmd.operation != OR) {
+			list_node<T>* node_to_delete;
+			while ((node_to_delete = secondary_tree->find_cmd(&cmd, &record::cmp_phone))) {
+				search_tree->avl_delete(node_to_delete, &record::cmp);
+				secondary_tree->avl_delete(node_to_delete, &record::cmp_sec);
+				groups[node_to_delete->get_group() - 101].search_tree.avl_delete(node_to_delete, &record::cmp);
+				groups[node_to_delete->get_group() - 101].secondary_tree.avl_delete(node_to_delete, &record::cmp_sec);
+				this->delete_list_node(node_to_delete);
+			}
+		}
+		else {
+			list_node<T> *node = this->gethead();
+			list_node<T> *tmp;
+			while (node) {
+				tmp = node->next;
+				if (satisfy(*node, cmd)) {
+					search_tree->avl_delete(node, &record::cmp);
+					secondary_tree->avl_delete(node, &record::cmp_sec);
+					groups[node->get_group() - 101].search_tree.avl_delete(node, &record::cmp);
+					groups[node->get_group() - 101].secondary_tree.avl_delete(node, &record::cmp_sec);
+					this->delete_list_node(node);
+				}
+				node = tmp;
+			}
+		}
+
+		return 0;
 	}
 };
 
@@ -63,230 +110,150 @@ public:
 	int counter;
 	int checked;
 
-	int select_with_cmd(const command & cmd) {
-		int i = 0;
-		avl_node<T> *node = nullptr;
+	int select_with_cmd(const command & cmd, long long (record::*compare)(const record&)const) {
 		counter = 0;
 		checked = 0;
 		const list_node<command> ln_cmd(cmd);
-		if (cmd.c_name == EQ) search_eq(this->root, ln_cmd);
-		else search_gt(this->root, ln_cmd);
+		if ((cmd.c_name == EQ && compare == &record::cmp_name) ||
+			(cmd.c_phone == EQ && compare == &record::cmp_phone))
+			search_eq(this->r_root(), ln_cmd, compare);
+		else if ((cmd.c_name == NE && compare == &record::cmp_name) ||
+			(cmd.c_phone == NE && compare == &record::cmp_phone)) {
+			sel_NE2(cmd, this->r_root(), compare);
+		}
+		else search_gt(this->r_root(), ln_cmd, compare);
 		return counter;
 	}
 
 
-	void search_eq(avl_node<T> * node, const list_node<command> & cmd) {
+	void search_eq(avl_node<T> * node, const list_node<command> & cmd, long long (record::*compare)(const record&)const, int found = 0) {
 		if (!node) return;
-		checked++;
-		int cmp = cmd.cmp(*(record*)node->pdata);
-		if		(cmp > 0) { search_eq(node->link[1], cmd); }
-		else if (cmp < 0) { search_eq(node->link[0], cmd); }
+		int cmp = (cmd.*compare)(*(record*)node->pdata);
+		if (cmp != 0 && found) return;
+		if (cmp > 0) { search_eq(node->link[1], cmd, compare); }
+		else if (cmp < 0) { search_eq(node->link[0], cmd, compare); }
 		else {
-			
-			search_eq(node->link[0], cmd);
-			search_eq(node->link[1], cmd);
-			if (satisfy(*node->pdata, cmd, 1)) {
-				counter++;
-				//node->pdata->print();
+			search_eq(node->link[0], cmd, compare, 0);
+			search_eq(node->link[1], cmd, compare, 0);
+			if (satisfy(*node->pdata, cmd)) {
+				node->pdata->print();
 			}
-			//printf("-----\n");
 		}
 	}
 
-	int delete_eq(avl_node<T> * node, const list_node<command> & cmd, list<record>* storage) {
-		if (!node) return 0;
-		
-		int cmp = node->pdata->cmp_name(cmd);
-		if (cmp > 0) { delete_eq(node->link[0], cmd, storage); }
-		else if (cmp < 0) { delete_eq(node->link[1], cmd, storage); }
-		else {
 
-			/*delete_eq(node->link[0], cmd, storage);
-			delete_eq(node->link[1], cmd, storage);*/
-			if (satisfy(*node->pdata, cmd, 1)) {
-				counter++;
-				checked++;
-				this->avl_delete(node->pdata);
-				storage->delete_list_node(node->pdata, nullptr);
-			}
-			//printf("-----\n");
-		}
-		return counter;
-	}
-
-
-	void search_gt(avl_node<T> * node, const list_node<command> & cmd) {
+	void search_gt(avl_node<T> * node, const list_node<command> & cmd, long long (record::*compare)(const record&)const) {
 		if (!node) return;
-		checked++;
-		switch (cmd.c_name)
+		switch (compare == &record::cmp_name ? cmd.c_name : cmd.c_phone)
 		{
 		case GT:
-			if (node->pdata->cmp_name(cmd) > 0) {
-				if (satisfy(*node->pdata, cmd, 1)) {
-					counter++;
-					//node->pdata->print();
+			if ((node->pdata->*compare)(cmd) > 0) {
+				if (satisfy(*node->pdata, cmd)) {
+					node->pdata->print();
 				}
 				print_and_count(node->link[1], cmd);
-				search_gt(node->link[0], cmd);
+				search_gt(node->link[0], cmd, compare);
 			}
 			else {
-				search_gt(node->link[1], cmd);
+				search_gt(node->link[1], cmd, compare);
 			}
 			return;
 		case LT:
-			if (node->pdata->cmp_name(cmd) < 0) {
-				if (satisfy(*node->pdata, cmd, 1)) {
-					counter++;
-					//node->pdata->print();
+			if ((node->pdata->*compare)(cmd) < 0) {
+				if (satisfy(*node->pdata, cmd)) {
+					node->pdata->print();
 				}
 				print_and_count(node->link[0], cmd);
-				search_gt(node->link[1], cmd);
+				search_gt(node->link[1], cmd, compare);
 			}
 			else {
-				search_gt(node->link[0], cmd);
+				search_gt(node->link[0], cmd, compare);
 			}
 			return;
 		case LE:
-			if (node->pdata->cmp_name(cmd) <= 0) {
-				if (satisfy(*node->pdata, cmd, 1)) {
-					counter++;
-					//node->pdata->print();
+			if ((node->pdata->*compare)(cmd) <= 0) {
+				if (satisfy(*node->pdata, cmd)) {
+					node->pdata->print();
 				}
 				print_and_count(node->link[0], cmd);
-				search_gt(node->link[1], cmd);
+				search_gt(node->link[1], cmd, compare);
 			}
 			else {
-				search_gt(node->link[0], cmd);
+				search_gt(node->link[0], cmd, compare);
 			}
 			return;
 		case GE:
-			if (node->pdata->cmp_name(cmd) >= 0) {
-				if (satisfy(*node->pdata, cmd, 1)) {
-					counter++;
-					//node->pdata->print();
+			if ((node->pdata->*compare)(cmd) >= 0) {
+				if (satisfy(*node->pdata, cmd)) {
+					node->pdata->print();
 				}
 				print_and_count(node->link[1], cmd);
-				search_gt(node->link[0], cmd);
+				search_gt(node->link[0], cmd, compare);
 			}
 			else {
-				search_gt(node->link[1], cmd);
+				search_gt(node->link[1], cmd, compare);
 			}
 			return;
 		default:
 			return;
 		}
-		
+
 	}
 
 	void  print_and_count(avl_node<T> * node, const list_node<command> & cmd) {
 		if (!node) return;
-		if (satisfy(*node->pdata, cmd, 1)) {
-			counter++;
-			//node->pdata->print();
+		if (satisfy(*node->pdata, cmd)) {
+			node->pdata->print();
 		}
 		print_and_count(node->link[0], cmd);
 		print_and_count(node->link[1], cmd);
 	}
-
-	void  delete_and_count(avl_node<T> * node, const list_node<command> & cmd, list<record>* storage) {
+	void  just_print(avl_node<T> * node) {
 		if (!node) return;
-		if (satisfy(*node->pdata, cmd, 1)) {
-			checked++;
-			counter++;
-			this->avl_delete(node->pdata);
-			storage->delete_list_node(node->pdata, nullptr);
-		}
-		delete_and_count(node->link[0], cmd, storage);
-		delete_and_count(node->link[1], cmd, storage);
+		node->pdata->print();
+		just_print(node->link[0]);
+		just_print(node->link[1]);
 	}
 
-	void delete_gt(avl_node<T> * node, const list_node<command> & cmd, list<record>* storage) {
+	void sel_NE2(const command & cmd, avl_node<T> * node, long long (record::*compare)(const record&)const, int checked = 0) {
 		if (!node) return;
-		switch (cmd.c_name)
+		int cmp = (cmd.*compare)(*node->pdata);
+		if (cmp != 0) {
+			if (checked) { print_and_count(node, cmd); return; }
+			if (satisfy(*node->pdata, cmd)) {
+				node->pdata->print();
+			}
+			print_and_count(node->link[cmp < 0], cmd);
+			sel_NE2(cmd, node->link[cmp > 0], compare);
+			return;
+		}
+		if (cmp == 0) {
+			sel_NE2(cmd, node->link[0], compare, 1);
+			sel_NE2(cmd, node->link[1], compare, 1);
+		}
+	}
+
+	int sel_OR(command & cmd, db_avl<T> * secondary_tree) {
+		select_with_cmd(cmd, &record::cmp_name);
+		((command *)&cmd)->reverse();
+		secondary_tree->select_with_cmd(cmd, &record::cmp_phone);
+		return 1;
+	}
+
+	T* find_cmd(const command * cmd, long long (record::*compare)(const record&)const) {
+		int cmp;
+		avl_node<T>* p = this->pre_root;
+		for (cmp = -1;; cmp = (cmd->*compare)(*p->pdata))
 		{
-		case GT:
-			if (node->pdata->cmp_name(cmd) > 0) {
-				
-				delete_and_count(node->link[1], cmd, storage);
-				delete_gt(node->link[0], cmd, storage);
-				if (satisfy(*node->pdata, cmd, 1)) {
-					counter++; checked++;
-					this->avl_delete(node->pdata);
-					storage->delete_list_node(node->pdata, nullptr);
-				}
+			if (cmp == 0 && satisfy(*p->pdata, *cmd)) {
+				return p->pdata;
 			}
-			else {
-				delete_gt(node->link[1], cmd, storage);
-			}
-			return;
-		case LT:
-			if (node->pdata->cmp_name(cmd) < 0) {
-				
-				delete_and_count(node->link[0], cmd, storage);
-				delete_gt(node->link[1], cmd, storage);
-				if (satisfy(*node->pdata, cmd, 1)) {
-					counter++; checked++;
-					this->avl_delete(node->pdata);
-					storage->delete_list_node(node->pdata, nullptr);
-				}
-			}
-			else {
-				delete_gt(node->link[0], cmd, storage);
-			}
-			return;
-		case LE:
-			if (node->pdata->cmp_name(cmd) <= 0) {
-				
-				delete_and_count(node->link[0], cmd, storage);
-				delete_gt(node->link[1], cmd, storage);
-				if (satisfy(*node->pdata, cmd, 1)) {
-					counter++; checked++;
-					this->avl_delete(node->pdata);
-					storage->delete_list_node(node->pdata, nullptr);
-				}
-			}
-			else {
-				delete_gt(node->link[0], cmd, storage);
-			}
-			return;
-		case GE:
-			if (node->pdata->cmp_name(cmd) >= 0) {
-				
-				delete_and_count(node->link[1], cmd, storage);
-				delete_gt(node->link[0], cmd, storage);
-				if (satisfy(*node->pdata, cmd, 1)) {
-					counter++; checked++;
-					this->avl_delete(node->pdata);
-					storage->delete_list_node(node->pdata, nullptr);
-				}
-			}
-			else {
-				delete_gt(node->link[1], cmd, storage);
-			}
-			return;
-		default:
-			return;
-		}
+			p = p->link[cmp > 0];
+			if (p == nullptr)
+				return nullptr;
 
-	}
-
-	
-	
-	int delete_with_cmd(const command & cmd, list<record> *list) {
-		int i = 0;
-		avl_node<T> *node = nullptr;
-		counter = 0;
-		checked = 0;
-		const list_node<command> ln_cmd(cmd);
-		if (cmd.c_name == EQ) { 
-			do {
-				;
-			} while (delete_eq(this->root, ln_cmd, list));
-			
 		}
-		printf("hei=%d, minh = %d\n", this->height(), this->getminHeight(this->root));
-		this->is_it_avl();
-		return checked;
+		return nullptr;
 	}
 };
 
@@ -295,58 +262,118 @@ class Database {
 private:
 	//Private data
 	db_list<T> storage;
-	db_avl<list_node<T>> search_tree;//name
+
 
 	//Private methods
 	Database(const Database & db);
 	Database(Database && db);
 
 public:
+	db_avl<list_node<T>> search_tree;//name
+	db_avl<list_node<T>> secondary_tree;//phone
+	Database<T> * groups = nullptr;
 	//Public methods
 	//Constructors
-	Database() :storage(){}
-	//~Database();
-	
+	Database() :storage() {}
+	~Database() {
+		if (groups) {
+			delete[] groups;
+		}
+	}
+
+	int init_groups() {
+		groups = new Database[N_GROUPS];
+		return 0;
+	}
 
 	int init_from_file(const char * filename) {
 		FILE * fp = fopen(filename, "r");
 		if (!fp) { printf("sdf\n"); return 0; }
 		T data;
-		while (data.scan(fp)) {
-			//storage.push(data);
-			if (!search_tree.insert((storage.push(data)))) {
-				//data.print();
-			}
-			//printf("tree\n");
-			//search_tree.print();
-			//printf("------------------\n");
-		}
-		//printf("counter=%d\n", max);
-		fclose(fp);
-		search_tree.print();
+		/*struct timeval start;
+		struct timeval end;
+		gettimeofday(&start, nullptr);*/
+		double start = clock();
+		double end;
 		
-		printf("hei=%d, minh = %d\n", search_tree.height(),search_tree.getminHeight(search_tree.rroot()));
-		search_tree.is_it_avl();
+		while (data.scan(fp)) {
+			list_node<T> *node = storage.push(data);
+			search_tree.avl_insert(node, &record::cmp);
+			secondary_tree.avl_insert(node, &record::cmp_sec);
+
+			int where = node->get_group();
+			assert(where > 100 && where < 599);
+			groups[where - 101].search_tree.avl_insert(node, &record::cmp);
+			groups[where - 101].secondary_tree.avl_insert(node, &record::cmp_sec);
+		}/*
+		gettimeofday(&end, nullptr);*/
+		end = clock();
+		//double delta = ((end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec) / 1000000.0;
+		double delta = (end - start) / CLOCKS_PER_SEC;
+		printE("elapsed %lf\n", delta);
+		//search_tree.print();
+		fclose(fp);
+		//search_tree.print();
+		//secondary_tree.print();
+
+		/*for (int i = 0; i < N_GROUPS; i++) {
+			printf("group = %d\n", i + 101);
+			groups[i].search_tree.print();
+			groups[i].secondary_tree.print();
+		}*/
+
+		/*printf("hei=%d, minh = %d\n", search_tree.height(),search_tree.getminHeight(search_tree.r_root()));
+		search_tree.is_it_avl(&record::cmp);
+		printf("hei=%d, minh = %d\n", secondary_tree.height(), secondary_tree.getminHeight(secondary_tree.r_root()));
+		secondary_tree.is_it_avl(&record::cmp_sec);*/
 		return 1;
-		//return storage.init_from_file(filename);
 	}
-	int execute_cmd(const command &cmd) {
+	int execute_cmd(command &cmd) {
 		switch (cmd.type)
 		{
 		case INSERT:
-			if (!storage.find(*(const T*)&cmd)) {
-				search_tree.insert(storage.push(*(const T*)&cmd));
+			if(!groups[cmd.get_group()-101].secondary_tree.find(&cmd, &record::cmp_sec)){
+			//if (!secondary_tree.find(&cmd, &record::cmp_sec)) {
+				list_node<T> *node = storage.push(*(const T*)&cmd);
+				search_tree.avl_insert(node, &record::cmp);
+				secondary_tree.avl_insert(node, &record::cmp_sec);
+
+				int where = node->get_group();
+				assert(where > 100 && where < 599);
+				groups[where - 101].search_tree.avl_insert(node, &record::cmp);
+				groups[where - 101].secondary_tree.avl_insert(node, &record::cmp_sec);
 			}
 			break;
 		case SELECT:
-			if(cmd.c_name && cmd.c_name!=LIKE)	return search_tree.select_with_cmd(cmd);
-			else return storage.select_with_cmd(cmd);
-			//return storage.select_with_cmd(cmd);
+			if (cmd.c_group == EQ) {
+				if (cmd.operation == OR) {
+					groups[cmd.get_group() - 101].search_tree.print_no_f();
+					cmd.c_group = NE;
+					cmd.operation = AND;
+				}
+				else {
+					if (cmd.c_name) {
+						groups[cmd.get_group() - 101].search_tree.select_with_cmd(cmd, &record::cmp_name);
+					}
+					else if (cmd.c_phone) {
+						groups[cmd.get_group() - 101].secondary_tree.select_with_cmd(cmd, &record::cmp_phone);
+					}
+					else groups[cmd.get_group() - 101].search_tree.print_no_f();
+					return 0;
+				}
+			}
+
+			if (cmd.c_phone && cmd.operation != OR &&
+				cmd.c_phone != NE) return secondary_tree.select_with_cmd(cmd, &record::cmp_phone);
+			if (cmd.c_name && cmd.c_name != LIKE && cmd.operation != OR &&
+				cmd.c_name != NE)	return search_tree.select_with_cmd(cmd, &record::cmp_name);
+			if (cmd.c_name && cmd.c_name != LIKE && cmd.operation == OR && cmd.c_phone) {
+				return search_tree.sel_OR(cmd, &secondary_tree);
+			}
+			return storage.select_with_cmd(cmd);
 			break;
 		case DELETE:
-			/*if (cmd.c_name && cmd.c_name == EQ)	return search_tree.delete_with_cmd(cmd, &storage);
-			else */
-				return storage.delete_with_cmd(cmd, &search_tree);
+			return storage.delete_with_cmd(cmd, &search_tree, &secondary_tree, groups);
 			break;
 		default:
 			break;
@@ -356,34 +383,38 @@ public:
 	void run_shell() {
 		char string[LEN];
 		sql_parser parser;
-		//printf("sql_query: ");
+		/*struct timeval start;
+		struct timeval end;
+		gettimeofday(&start, nullptr);*/
 		while (fgets(string, LEN, stdin)) {
 			parser.make_command(string);
-			//printD("\n");
-			//parser.print();
 			if (parser.is_understandable()) {
 				//int res = execute_cmd(*(command*)&parser);
-				struct timeval start;
-				struct timeval end;
-				search_tree.counter = 0; search_tree.checked = 0;
-				gettimeofday(&start, nullptr);
-
-				int res = execute_cmd(*(command*)&parser);
-				gettimeofday(&end, nullptr);
-				double delta = ((end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec) / 1000000.0;
+				//struct timeval start;
+				//struct timeval end;
+				//search_tree.counter = 0; search_tree.checked = 0;
+				//gettimeofday(&start, nullptr);
+				execute_cmd(*(command*)&parser);
+				//gettimeofday(&end, nullptr);
+				//double delta = ((end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec) / 1000000.0;
 					//0;
-				printf("Elapsed: %.4lf,  res = %d, counter = %d, size = %d\n", delta, res, search_tree.counter, search_tree.avl_size);
 				//parser.print_cmd();
+				//fprintf(stderr, "Elapsed: %.6lf, counter = %d, size = %d\n", delta, search_tree.counter, search_tree.avl_size);
+
 				//printf(" %d\n", res);
 				if (parser.get_type() == QUIT) break;
 			}
 			//printf("sql_query: ");
 		}
+		/*gettimeofday(&end, nullptr);
+		double delta = ((end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec) / 1000000.0;
+		printE("elapsed %lf\n", delta);*/
+
 	}
 
 };
 template<class T>
-__attribute__((always_inline)) inline bool satisfy(const T & sample, const command &cmd, int except_name=0) noexcept{
+inline bool satisfy(const T & sample, const command &cmd, int except_name = 0) noexcept {
 	//we gain 3 points we win
 	if (cmd.c_group + cmd.c_name + cmd.c_phone == 0) return true;
 	int points = 0;
@@ -410,7 +441,7 @@ __attribute__((always_inline)) inline bool satisfy(const T & sample, const comma
 		}
 	}
 	else points++;
-	
+
 	if (cmd.c_phone) {
 		long long phone_diff = sample.get_phone() - cmd.get_phone();
 		switch (cmd.c_phone)
@@ -433,7 +464,7 @@ __attribute__((always_inline)) inline bool satisfy(const T & sample, const comma
 		}
 	}
 	else points++;
-	
+
 
 	if (points == 3 || (points == 2 && cmd.get_op() == OR)) return 1;
 	if (cmd.c_name && !except_name) {
@@ -463,7 +494,7 @@ __attribute__((always_inline)) inline bool satisfy(const T & sample, const comma
 		points++;
 	}
 	//assert(points <= 3);
-	if (points == 3 || (points == 2 && cmd.get_op()==OR)) return 1;
+	if (points == 3 || (points == 2 && cmd.get_op() == OR)) return 1;
 	return 0;
 }
 

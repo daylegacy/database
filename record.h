@@ -30,10 +30,11 @@ public:
 		return group;
 	}
 	void set_name(const char * str) {
-		int delta = strlen(str) + 1 - name.getcapacity();
-		//printf("xv1\n");
+		int len = strlen(str);
+		int delta = len + 1 - name.getcapacity();
+		name.setsize(len+1);
 		if (delta > 0 ) {
-			name.reallocate(strlen(str) + 1);
+			name.reallocate(len + 1);
 		}
 		strcpy(name, str);
 	}
@@ -44,7 +45,7 @@ public:
 		this->group = group;
 	}
 	void print() const{
-		printf("  %-17s%-7lld  %-3d", (char*)name, phone, group);
+		printf("  %-17s%-7lld  %-3d\n", (char*)name, phone, group);
 	}
 	int scan(FILE *fp) {
 		char buf_n[LEN];
@@ -61,7 +62,8 @@ public:
 	bool operator==(const record & other) const{
 		return (strcmp(this->name, other.name) == 0 && this->group == other.group && this->phone == other.phone) ? 1 : 0;
 	}
-	__attribute__((always_inline)) inline int cmp(const record & other) const {
+	inline long long cmp(const record & other) const 
+	{
 		int cmp_name = strcmp(this->name, other.name);
 		if (cmp_name > 0) return 1;
 		else if (cmp_name < 0) return -1;
@@ -74,13 +76,30 @@ public:
 			}
 		}
 	}
-	__attribute__((always_inline)) inline int cmp_name(const record & other) const {
+	inline long long cmp_name(const record & other) const {
 		return strcmp(this->name, other.name);
+	}
+	inline long long cmp_phone(const record & other) const {
+		return this->phone - other.phone;
+	}
+	long long cmp_sec(const record & other) const 
+	{
+		long long cmp_phone = this->phone - other.phone;
+		if (cmp_phone > 0) return 1;
+		else if (cmp_phone < 0) return -1;
+		else {
+			int cmp_name = strcmp(this->name, other.name);
+			if (cmp_name > 0) return 1;
+			else if (cmp_name < 0) return -1;
+			else {
+				return this->group - other.group;
+			}
+		}
 	}
 	inline bool operator>(const record & other) const {
 		return cmp(other) == 1 ? 1:0;
 	}
-	__attribute__((always_inline)) inline bool operator<(const record & other) const {
+	inline bool operator<(const record & other) const {
 		return cmp(other) < 0 ? 1 : 0;
 	}
 	inline bool operator>=(const record & other) const {

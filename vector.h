@@ -22,7 +22,8 @@ public:
 	vector(const vector<T> & other)
 		:vector(other.size, other.capacity)
 	{
-		//printD("COPY cons\n");
+		//printf("COPY cons\n");
+		//printf("oth.size =%d cp = %d\n", other.size, other.capacity);
 		memcpy(ptr, other.ptr, size * sizeof(T));
 	}
 	vector(vector<T> && other)
@@ -50,13 +51,13 @@ public:
 		int new_capacity = capacity + delta;
 
 		auto new_ptr = new T[new_capacity];
+		memset(new_ptr, 0, new_capacity * sizeof(T));
 		memcpy(new_ptr, ptr, capacity * sizeof(T));
 		delete[] ptr;
 
 		//ptr = (T *)realloc(ptr, new_capacity*sizeof(T));
-		memset(new_ptr + capacity, 0, delta * sizeof(T));
+		
 		capacity = new_capacity;
-		size = new_size;
 		ptr = new_ptr;
 	}
 	T& operator[](int i) const {

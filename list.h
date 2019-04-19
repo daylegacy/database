@@ -52,6 +52,7 @@ public:
 
 	list_node<T> * push(const T & data) {
 		auto new_node = new list_node<T>(data);
+		//new_node->print();
 		if (tail) {
 			new_node->prev = tail;
 			tail->next = new_node;
